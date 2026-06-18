@@ -1,6 +1,6 @@
 """
 PDF ↔ Word Converter - Public Web App
-Dùng CloudConvert API để giữ nguyên layout + ảnh + bảng
+Dùng CloudConvert API + Supabase để lưu stats vĩnh viễn
 """
 
 import os, uuid, threading, time, requests
@@ -17,13 +17,48 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 ALLOWED = {".pdf", ".docx", ".doc"}
 CLOUDCONVERT_API_KEY = os.environ.get("CLOUDCONVERT_API_KEY", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-# Bộ đếm số lần convert (reset khi server restart)
-convert_stats = {
-    "total": 0,
-    "pdf_to_word": 0,
-    "word_to_pdf": 0,
-}
+
+def supabase_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+
+def get_stats():
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/stats?id=eq.1",
+            headers=supabase_headers(), timeout=5
+        )
+        data = r.json()
+        if data:
+            return data[0]
+    except:
+        pass
+    return {"total": 0, "pdf_to_word": 0, "word_to_pdf": 0}
+
+
+def increment_stats(kind):
+    try:
+        current = get_stats()
+        current["total"] += 1
+        current[kind] += 1
+        requests.patch(
+            f"{SUPABASE_URL}/rest/v1/stats?id=eq.1",
+            headers=supabase_headers(),
+            json={"total": current["total"], kind: current[kind]},
+            timeout=5
+        )
+        return current
+    except:
+        return None
+
 
 def auto_delete(path, delay=600):
     def _del():
@@ -153,7 +188,7 @@ def index():
 
 @app.route("/stats")
 def stats():
-    return jsonify(convert_stats)
+    return jsonify(get_stats())
 
 
 @app.route("/convert", methods=["POST"])
@@ -187,9 +222,8 @@ def convert():
     if not ok:
         return jsonify({"error": f"Thất bại: {method}"}), 500
 
-    # Tăng bộ đếm
-    convert_stats["total"] += 1
-    convert_stats[kind] += 1
+    # Lưu stats vào Supabase
+    new_stats = increment_stats(kind)
 
     auto_delete(out_path)
     return jsonify({
@@ -198,7 +232,7 @@ def convert():
         "filename": out_name,
         "method": method,
         "label": label,
-        "total_converts": convert_stats["total"],
+        "stats": new_stats,
     })
 
 
