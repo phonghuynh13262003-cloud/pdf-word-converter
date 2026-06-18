@@ -1,6 +1,6 @@
 """
 PDF ↔ Word Converter - Public Web App
-Dùng CloudConvert API + Supabase để lưu stats vĩnh viễn
+Dùng ConvertAPI để giữ nguyên layout + ảnh + bảng
 """
 
 import os, uuid, threading, time, requests
@@ -16,7 +16,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 ALLOWED = {".pdf", ".docx", ".doc"}
-CLOUDCONVERT_API_KEY = os.environ.get("CLOUDCONVERT_API_KEY", "")
+CONVERTAPI_SECRET = os.environ.get("CONVERTAPI_SECRET", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
@@ -57,7 +57,7 @@ def increment_stats(kind):
         )
         return current
     except:
-        return None
+        return {"total": 0, "pdf_to_word": 0, "word_to_pdf": 0}
 
 
 def auto_delete(path, delay=600):
@@ -68,65 +68,33 @@ def auto_delete(path, delay=600):
     threading.Thread(target=_del, daemon=True).start()
 
 
-def convert_via_cloudconvert(input_path, output_path, input_fmt, output_fmt):
-    headers = {
-        "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    job_payload = {
-        "tasks": {
-            "upload-file": {"operation": "import/upload"},
-            "convert-file": {
-                "operation": "convert",
-                "input": "upload-file",
-                "input_format": input_fmt,
-                "output_format": output_fmt,
-            },
-            "export-file": {
-                "operation": "export/url",
-                "input": "convert-file"
-            }
-        }
-    }
-    r = requests.post("https://api.cloudconvert.com/v2/jobs",
-                      json=job_payload, headers=headers, timeout=30)
-    if r.status_code != 201:
-        return False, f"Tạo job thất bại: {r.text}"
+def convert_via_convertapi(input_path, output_path, from_fmt, to_fmt):
+    """Dùng ConvertAPI — 250 lần/tháng miễn phí"""
+    try:
+        url = f"https://v2.convertapi.com/convert/{from_fmt}/to/{to_fmt}?Secret={CONVERTAPI_SECRET}"
 
-    job = r.json()["data"]
-    job_id = job["id"]
-    upload_task = next(t for t in job["tasks"] if t["name"] == "upload-file")
-    upload_url = upload_task["result"]["form"]["url"]
-    upload_params = upload_task["result"]["form"]["parameters"]
+        with open(input_path, "rb") as f:
+            files = {"File": (os.path.basename(input_path), f)}
+            r = requests.post(url, files=files, timeout=120)
 
-    with open(input_path, "rb") as f:
-        files = {"file": (os.path.basename(input_path), f)}
-        ur = requests.post(upload_url, data=upload_params, files=files, timeout=60)
-    if ur.status_code not in (200, 201, 204):
-        return False, f"Upload thất bại: {ur.text}"
+        if r.status_code != 200:
+            return False, f"ConvertAPI lỗi: {r.text}"
 
-    for _ in range(36):
-        time.sleep(5)
-        jr = requests.get(f"https://api.cloudconvert.com/v2/jobs/{job_id}",
-                          headers=headers, timeout=30)
-        job_status = jr.json()["data"]
-        status = job_status["status"]
-        if status == "finished":
-            export_task = next(t for t in job_status["tasks"] if t["name"] == "export-file")
-            download_url = export_task["result"]["files"][0]["url"]
-            dr = requests.get(download_url, timeout=60)
-            with open(output_path, "wb") as f:
-                f.write(dr.content)
-            return True, "CloudConvert"
-        if status == "error":
-            return False, "CloudConvert báo lỗi khi convert"
+        data = r.json()
+        file_data = data["Files"][0]["FileData"]
 
-    return False, "Timeout — convert quá lâu"
+        import base64
+        with open(output_path, "wb") as f:
+            f.write(base64.b64decode(file_data))
+
+        return True, "ConvertAPI"
+    except Exception as e:
+        return False, str(e)
 
 
 def pdf_to_word(pdf_path, docx_path):
-    if CLOUDCONVERT_API_KEY:
-        return convert_via_cloudconvert(pdf_path, docx_path, "pdf", "docx")
+    if CONVERTAPI_SECRET:
+        return convert_via_convertapi(pdf_path, docx_path, "pdf", "docx")
     try:
         import pdfplumber
         from docx import Document
@@ -154,8 +122,8 @@ def pdf_to_word(pdf_path, docx_path):
 
 
 def word_to_pdf(docx_path, pdf_path):
-    if CLOUDCONVERT_API_KEY:
-        return convert_via_cloudconvert(docx_path, pdf_path, "docx", "pdf")
+    if CONVERTAPI_SECRET:
+        return convert_via_convertapi(docx_path, pdf_path, "docx", "pdf")
     try:
         from docx import Document as DocxDoc
         from reportlab.lib.pagesizes import A4
@@ -222,10 +190,9 @@ def convert():
     if not ok:
         return jsonify({"error": f"Thất bại: {method}"}), 500
 
-    # Lưu stats vào Supabase
     new_stats = increment_stats(kind)
-
     auto_delete(out_path)
+
     return jsonify({
         "success": True,
         "download_url": f"/download/{uid}_{out_name}",
