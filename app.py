@@ -18,6 +18,13 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 ALLOWED = {".pdf", ".docx", ".doc"}
 CLOUDCONVERT_API_KEY = os.environ.get("CLOUDCONVERT_API_KEY", "")
 
+# Bộ đếm số lần convert (reset khi server restart)
+convert_stats = {
+    "total": 0,
+    "pdf_to_word": 0,
+    "word_to_pdf": 0,
+}
+
 def auto_delete(path, delay=600):
     def _del():
         time.sleep(delay)
@@ -27,18 +34,13 @@ def auto_delete(path, delay=600):
 
 
 def convert_via_cloudconvert(input_path, output_path, input_fmt, output_fmt):
-    """Dùng CloudConvert API — giữ nguyên layout, ảnh, bảng."""
     headers = {
         "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
         "Content-Type": "application/json"
     }
-
-    # Bước 1: Tạo job
     job_payload = {
         "tasks": {
-            "upload-file": {
-                "operation": "import/upload"
-            },
+            "upload-file": {"operation": "import/upload"},
             "convert-file": {
                 "operation": "convert",
                 "input": "upload-file",
@@ -51,7 +53,6 @@ def convert_via_cloudconvert(input_path, output_path, input_fmt, output_fmt):
             }
         }
     }
-
     r = requests.post("https://api.cloudconvert.com/v2/jobs",
                       json=job_payload, headers=headers, timeout=30)
     if r.status_code != 201:
@@ -59,37 +60,29 @@ def convert_via_cloudconvert(input_path, output_path, input_fmt, output_fmt):
 
     job = r.json()["data"]
     job_id = job["id"]
-
-    # Lấy upload task
     upload_task = next(t for t in job["tasks"] if t["name"] == "upload-file")
     upload_url = upload_task["result"]["form"]["url"]
     upload_params = upload_task["result"]["form"]["parameters"]
 
-    # Bước 2: Upload file
     with open(input_path, "rb") as f:
         files = {"file": (os.path.basename(input_path), f)}
         ur = requests.post(upload_url, data=upload_params, files=files, timeout=60)
     if ur.status_code not in (200, 201, 204):
         return False, f"Upload thất bại: {ur.text}"
 
-    # Bước 3: Chờ convert xong (tối đa 3 phút)
     for _ in range(36):
         time.sleep(5)
         jr = requests.get(f"https://api.cloudconvert.com/v2/jobs/{job_id}",
                           headers=headers, timeout=30)
         job_status = jr.json()["data"]
         status = job_status["status"]
-
         if status == "finished":
             export_task = next(t for t in job_status["tasks"] if t["name"] == "export-file")
             download_url = export_task["result"]["files"][0]["url"]
-
-            # Bước 4: Tải file về server
             dr = requests.get(download_url, timeout=60)
             with open(output_path, "wb") as f:
                 f.write(dr.content)
             return True, "CloudConvert"
-
         if status == "error":
             return False, "CloudConvert báo lỗi khi convert"
 
@@ -99,8 +92,6 @@ def convert_via_cloudconvert(input_path, output_path, input_fmt, output_fmt):
 def pdf_to_word(pdf_path, docx_path):
     if CLOUDCONVERT_API_KEY:
         return convert_via_cloudconvert(pdf_path, docx_path, "pdf", "docx")
-
-    # Fallback: pdfplumber
     try:
         import pdfplumber
         from docx import Document
@@ -130,8 +121,6 @@ def pdf_to_word(pdf_path, docx_path):
 def word_to_pdf(docx_path, pdf_path):
     if CLOUDCONVERT_API_KEY:
         return convert_via_cloudconvert(docx_path, pdf_path, "docx", "pdf")
-
-    # Fallback: reportlab
     try:
         from docx import Document as DocxDoc
         from reportlab.lib.pagesizes import A4
@@ -162,6 +151,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/stats")
+def stats():
+    return jsonify(convert_stats)
+
+
 @app.route("/convert", methods=["POST"])
 def convert():
     if "file" not in request.files:
@@ -182,14 +176,20 @@ def convert():
         out_path = os.path.join(OUTPUT_FOLDER, f"{uid}_{out_name}")
         ok, method = pdf_to_word(input_path, out_path)
         label = "Word (.docx)"
+        kind = "pdf_to_word"
     else:
         out_name = os.path.splitext(safe)[0] + ".pdf"
         out_path = os.path.join(OUTPUT_FOLDER, f"{uid}_{out_name}")
         ok, method = word_to_pdf(input_path, out_path)
         label = "PDF"
+        kind = "word_to_pdf"
 
     if not ok:
         return jsonify({"error": f"Thất bại: {method}"}), 500
+
+    # Tăng bộ đếm
+    convert_stats["total"] += 1
+    convert_stats[kind] += 1
 
     auto_delete(out_path)
     return jsonify({
@@ -198,6 +198,7 @@ def convert():
         "filename": out_name,
         "method": method,
         "label": label,
+        "total_converts": convert_stats["total"],
     })
 
 
