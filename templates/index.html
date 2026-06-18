@@ -484,6 +484,14 @@ btnConvert.addEventListener('click',async()=>{
       progressWrap.classList.remove('show');
       result.classList.add('show');
       if(data.success){
+          // Cập nhật stats từ Supabase
+          if(data.stats){
+            document.getElementById('statTotal').textContent=data.stats.total;
+            document.getElementById('statPdf').textContent=data.stats.pdf_to_word;
+            document.getElementById('statWord').textContent=data.stats.word_to_pdf;
+          } else {
+            loadStats();
+          }
         result.className='result show success';
         resultIcon.textContent='✅';
         resultMsg.textContent='CHUYỂN ĐỔI THÀNH CÔNG!';
