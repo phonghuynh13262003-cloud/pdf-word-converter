@@ -322,6 +322,25 @@ footer span{color:var(--rust);}
     </ul>
   </div>
 
+  <!-- Stats Card -->
+  <div class="card" style="text-align:center;padding:20px 28px;">
+    <div class="card-label" style="justify-content:center;">③ Thống kê</div>
+    <div style="display:flex;justify-content:center;gap:32px;flex-wrap:wrap;margin-top:8px;">
+      <div>
+        <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--rust)" id="statTotal">0</div>
+        <div style="font-size:12px;color:#7a6a5a;margin-top:4px;">Tổng lượt convert</div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--sage)" id="statPdf">0</div>
+        <div style="font-size:12px;color:#7a6a5a;margin-top:4px;">PDF → Word</div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--gold)" id="statWord">0</div>
+        <div style="font-size:12px;color:#7a6a5a;margin-top:4px;">Word → PDF</div>
+      </div>
+    </div>
+  </div>
+
   <footer>
     Chạy trên ☁️ Render &nbsp;·&nbsp; File tự xóa sau <span>10 phút</span> &nbsp;·&nbsp; Không lưu dữ liệu
   </footer>
@@ -392,6 +411,18 @@ function reset(){
   progressFill.style.width='0%';
 }
 btnAgain.addEventListener('click',reset);
+
+// Load stats khi mở trang
+async function loadStats(){
+  try{
+    const r=await fetch('/stats');
+    const d=await r.json();
+    document.getElementById('statTotal').textContent=d.total;
+    document.getElementById('statPdf').textContent=d.pdf_to_word;
+    document.getElementById('statWord').textContent=d.word_to_pdf;
+  }catch(e){}
+}
+loadStats();
 
 function addHistory(name,url,method,success){
   const ext=name.split('.').pop().toUpperCase();
