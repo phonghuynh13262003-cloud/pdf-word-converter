@@ -1,9 +1,9 @@
 """
 PDF ↔ Word Converter - Public Web App
-Deploy lên Render.com (miễn phí)
+Dùng CloudConvert API để giữ nguyên layout + ảnh + bảng
 """
 
-import os, uuid, threading, time
+import os, uuid, threading, time, requests
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 
@@ -16,8 +16,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 ALLOWED = {".pdf", ".docx", ".doc"}
+CLOUDCONVERT_API_KEY = os.environ.get("CLOUDCONVERT_API_KEY", "")
 
-# Tự xóa file sau 10 phút
 def auto_delete(path, delay=600):
     def _del():
         time.sleep(delay)
@@ -26,7 +26,81 @@ def auto_delete(path, delay=600):
     threading.Thread(target=_del, daemon=True).start()
 
 
+def convert_via_cloudconvert(input_path, output_path, input_fmt, output_fmt):
+    """Dùng CloudConvert API — giữ nguyên layout, ảnh, bảng."""
+    headers = {
+        "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # Bước 1: Tạo job
+    job_payload = {
+        "tasks": {
+            "upload-file": {
+                "operation": "import/upload"
+            },
+            "convert-file": {
+                "operation": "convert",
+                "input": "upload-file",
+                "input_format": input_fmt,
+                "output_format": output_fmt,
+            },
+            "export-file": {
+                "operation": "export/url",
+                "input": "convert-file"
+            }
+        }
+    }
+
+    r = requests.post("https://api.cloudconvert.com/v2/jobs",
+                      json=job_payload, headers=headers, timeout=30)
+    if r.status_code != 201:
+        return False, f"Tạo job thất bại: {r.text}"
+
+    job = r.json()["data"]
+    job_id = job["id"]
+
+    # Lấy upload task
+    upload_task = next(t for t in job["tasks"] if t["name"] == "upload-file")
+    upload_url = upload_task["result"]["form"]["url"]
+    upload_params = upload_task["result"]["form"]["parameters"]
+
+    # Bước 2: Upload file
+    with open(input_path, "rb") as f:
+        files = {"file": (os.path.basename(input_path), f)}
+        ur = requests.post(upload_url, data=upload_params, files=files, timeout=60)
+    if ur.status_code not in (200, 201, 204):
+        return False, f"Upload thất bại: {ur.text}"
+
+    # Bước 3: Chờ convert xong (tối đa 3 phút)
+    for _ in range(36):
+        time.sleep(5)
+        jr = requests.get(f"https://api.cloudconvert.com/v2/jobs/{job_id}",
+                          headers=headers, timeout=30)
+        job_status = jr.json()["data"]
+        status = job_status["status"]
+
+        if status == "finished":
+            export_task = next(t for t in job_status["tasks"] if t["name"] == "export-file")
+            download_url = export_task["result"]["files"][0]["url"]
+
+            # Bước 4: Tải file về server
+            dr = requests.get(download_url, timeout=60)
+            with open(output_path, "wb") as f:
+                f.write(dr.content)
+            return True, "CloudConvert"
+
+        if status == "error":
+            return False, "CloudConvert báo lỗi khi convert"
+
+    return False, "Timeout — convert quá lâu"
+
+
 def pdf_to_word(pdf_path, docx_path):
+    if CLOUDCONVERT_API_KEY:
+        return convert_via_cloudconvert(pdf_path, docx_path, "pdf", "docx")
+
+    # Fallback: pdfplumber
     try:
         import pdfplumber
         from docx import Document
@@ -54,24 +128,10 @@ def pdf_to_word(pdf_path, docx_path):
 
 
 def word_to_pdf(docx_path, pdf_path):
-    import subprocess
-    for cmd in ["libreoffice", "soffice"]:
-        try:
-            r = subprocess.run(
-                [cmd, "--headless", "--convert-to", "pdf",
-                 "--outdir", OUTPUT_FOLDER, docx_path],
-                capture_output=True, timeout=60
-            )
-            if r.returncode == 0:
-                generated = os.path.join(
-                    OUTPUT_FOLDER,
-                    os.path.splitext(os.path.basename(docx_path))[0] + ".pdf"
-                )
-                if generated != pdf_path and os.path.exists(generated):
-                    os.rename(generated, pdf_path)
-                return True, "LibreOffice"
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+    if CLOUDCONVERT_API_KEY:
+        return convert_via_cloudconvert(docx_path, pdf_path, "docx", "pdf")
+
+    # Fallback: reportlab
     try:
         from docx import Document as DocxDoc
         from reportlab.lib.pagesizes import A4
