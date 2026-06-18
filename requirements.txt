@@ -4,3 +4,4 @@ python-docx
 pdfplumber
 reportlab
 werkzeug
+requests
