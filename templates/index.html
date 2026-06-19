@@ -593,7 +593,8 @@ btnConvert.addEventListener('click',async()=>{
         const isPdf = data.filename.endsWith('.pdf');
         let actionsHtml = `<a class="btn-download" href="${data.download_url}" download="${data.filename}">↓ TẢI VỀ ${data.filename}</a>`;
         if(isPdf){
-          actionsHtml += ` <button class="btn-preview" onclick="openPreview('${data.download_url}','${data.filename}')">👁 XEM TRƯỚC</button>`;
+          const previewUrl = data.download_url.replace('/download/', '/preview/');
+          actionsHtml += ` <button class="btn-preview" onclick="openPreview('${previewUrl}','${data.filename}')">👁 XEM TRƯỚC</button>`;
         }
         resultActions.innerHTML = actionsHtml;
         addHistory(data.filename,data.download_url,data.method,true);
