@@ -203,6 +203,17 @@ h1 span{color:var(--rust);}
   transition:all 0.15s;
 }
 .btn-download:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--brown);}
+.btn-preview{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:10px 20px;border-radius:4px;
+  border:2px solid var(--gold);
+  background:transparent;color:var(--brown);
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  letter-spacing:1px;text-decoration:none;
+  box-shadow:3px 3px 0 var(--gold);
+  transition:all 0.15s;margin-left:8px;
+}
+.btn-preview:hover{background:var(--gold);transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--brown);}
 
 .btn-again{
   display:inline-block;margin-top:10px;
@@ -520,7 +531,13 @@ btnConvert.addEventListener('click',async()=>{
         resultIcon.textContent='✅';
         resultMsg.textContent='CHUYỂN ĐỔI THÀNH CÔNG!';
         resultSub.textContent=data.filename+' · '+data.method;
-        resultActions.innerHTML=`<a class="btn-download" href="${data.download_url}" download="${data.filename}">↓ TẢI VỀ ${data.filename}</a>`;
+        // Nút tải về + xem trước (nếu là PDF)
+        const isPdf = data.filename.endsWith('.pdf');
+        let actionsHtml = `<a class="btn-download" href="${data.download_url}" download="${data.filename}">↓ TẢI VỀ ${data.filename}</a>`;
+        if(isPdf){
+          actionsHtml += ` <a class="btn-preview" href="${data.download_url}" target="_blank">👁 XEM TRƯỚC</a>`;
+        }
+        resultActions.innerHTML = actionsHtml;
         addHistory(data.filename,data.download_url,data.method,true);
       }else{
         result.className='result show error';
