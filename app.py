@@ -160,6 +160,22 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/quota")
+def quota():
+    try:
+        r = requests.get(
+            f"https://v2.convertapi.com/user?Secret={CONVERTAPI_SECRET}",
+            timeout=5
+        )
+        data = r.json()
+        used = data.get("ConversionsConsumed", 0)
+        total = data.get("ConversionsTotal", 250)
+        remaining = total - used
+        return jsonify({"used": used, "total": total, "remaining": remaining})
+    except Exception as e:
+        return jsonify({"used": 0, "total": 250, "remaining": 250})
+
+
 @app.route("/stats")
 def stats():
     s = get_stats()
