@@ -215,6 +215,33 @@ h1 span{color:var(--rust);}
 }
 .btn-preview:hover{background:var(--gold);transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--brown);}
 
+/* PDF Preview Modal */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.7);z-index:1000;
+  align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.show{display:flex;}
+.modal-box{
+  background:var(--paper);border:2px solid var(--brown);
+  border-radius:4px;box-shadow:8px 8px 0 var(--brown);
+  width:100%;max-width:860px;height:90vh;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.modal-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  letter-spacing:1px;
+}
+.modal-close{
+  background:none;border:none;cursor:pointer;
+  font-size:20px;color:var(--brown);padding:2px 8px;
+  border-radius:4px;transition:all 0.15s;
+}
+.modal-close:hover{background:var(--rust);color:white;}
+.modal-iframe{flex:1;border:none;width:100%;}
+
 .btn-again{
   display:inline-block;margin-top:10px;
   font-family:var(--mono);font-size:11px;
@@ -368,6 +395,17 @@ footer span{color:var(--rust);}
   </footer>
 </div>
 
+<!-- PDF Preview Modal -->
+<div class="modal-overlay" id="pdfModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span id="modalTitle">XEM TRƯỚC PDF</span>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <iframe class="modal-iframe" id="modalIframe" src=""></iframe>
+  </div>
+</div>
+
 <script>
 const dropZone=document.getElementById('dropZone');
 const fileInput=document.getElementById('fileInput');
@@ -453,6 +491,26 @@ async function loadStats(){
 }
 loadStats();
 
+// PDF Preview Modal
+function openPreview(url, filename){
+  document.getElementById('modalTitle').textContent = '👁 ' + filename;
+  document.getElementById('modalIframe').src = url;
+  document.getElementById('pdfModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+document.getElementById('modalClose').addEventListener('click', ()=>{
+  document.getElementById('pdfModal').classList.remove('show');
+  document.getElementById('modalIframe').src = '';
+  document.body.style.overflow = '';
+});
+
+document.getElementById('pdfModal').addEventListener('click', (e)=>{
+  if(e.target === document.getElementById('pdfModal')){
+    document.getElementById('modalClose').click();
+  }
+});
+
 function addHistory(name,url,method,success){
   const ext=name.split('.').pop().toUpperCase();
   const icon=ext==='PDF'?'📕':'📘';
@@ -535,7 +593,7 @@ btnConvert.addEventListener('click',async()=>{
         const isPdf = data.filename.endsWith('.pdf');
         let actionsHtml = `<a class="btn-download" href="${data.download_url}" download="${data.filename}">↓ TẢI VỀ ${data.filename}</a>`;
         if(isPdf){
-          actionsHtml += ` <a class="btn-preview" href="${data.download_url}" target="_blank">👁 XEM TRƯỚC</a>`;
+          actionsHtml += ` <button class="btn-preview" onclick="openPreview('${data.download_url}','${data.filename}')">👁 XEM TRƯỚC</button>`;
         }
         resultActions.innerHTML = actionsHtml;
         addHistory(data.filename,data.download_url,data.method,true);
