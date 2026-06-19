@@ -325,17 +325,28 @@ footer span{color:var(--rust);}
   <!-- Stats Card -->
   <div class="card" style="text-align:center;padding:20px 28px;">
     <div class="card-label" style="justify-content:center;">③ Thống kê</div>
+
+    <!-- Giới hạn ngày -->
+    <div style="margin-bottom:16px;padding:12px;background:rgba(196,82,26,0.06);border:1px solid rgba(196,82,26,0.2);border-radius:6px;">
+      <div style="font-family:var(--mono);font-size:12px;color:#7a6a5a;margin-bottom:6px;">HÔM NAY ĐÃ DÙNG</div>
+      <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--rust)" id="statToday">0</div>
+      <div style="font-size:12px;color:#7a6a5a;margin-top:2px;">/ <span id="statLimit">8</span> lần · còn <span id="statRemaining" style="color:var(--sage);font-weight:600;">8</span> lần hôm nay</div>
+      <div style="margin-top:8px;background:#d4cfc7;border-radius:99px;height:6px;overflow:hidden;">
+        <div id="statBar" style="height:100%;border-radius:99px;background:var(--rust);width:0%;transition:width 0.4s;"></div>
+      </div>
+    </div>
+
     <div style="display:flex;justify-content:center;gap:32px;flex-wrap:wrap;margin-top:8px;">
       <div>
-        <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--rust)" id="statTotal">0</div>
+        <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--rust)" id="statTotal">0</div>
         <div style="font-size:12px;color:#7a6a5a;margin-top:4px;">Tổng lượt convert</div>
       </div>
       <div>
-        <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--sage)" id="statPdf">0</div>
+        <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--sage)" id="statPdf">0</div>
         <div style="font-size:12px;color:#7a6a5a;margin-top:4px;">PDF → Word</div>
       </div>
       <div>
-        <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--gold)" id="statWord">0</div>
+        <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--gold)" id="statWord">0</div>
         <div style="font-size:12px;color:#7a6a5a;margin-top:4px;">Word → PDF</div>
       </div>
     </div>
@@ -417,9 +428,16 @@ async function loadStats(){
   try{
     const r=await fetch('/stats');
     const d=await r.json();
-    document.getElementById('statTotal').textContent=d.total;
-    document.getElementById('statPdf').textContent=d.pdf_to_word;
-    document.getElementById('statWord').textContent=d.word_to_pdf;
+    document.getElementById('statTotal').textContent=d.total||0;
+    document.getElementById('statPdf').textContent=d.pdf_to_word||0;
+    document.getElementById('statWord').textContent=d.word_to_pdf||0;
+    const today=d.today_count||0;
+    const limit=d.daily_limit||8;
+    const remaining=d.remaining||limit;
+    document.getElementById('statToday').textContent=today;
+    document.getElementById('statLimit').textContent=limit;
+    document.getElementById('statRemaining').textContent=remaining;
+    document.getElementById('statBar').style.width=(today/limit*100)+'%';
   }catch(e){}
 }
 loadStats();
@@ -484,14 +502,20 @@ btnConvert.addEventListener('click',async()=>{
       progressWrap.classList.remove('show');
       result.classList.add('show');
       if(data.success){
-          // Cập nhật stats từ Supabase
+          // Cập nhật stats
           if(data.stats){
-            document.getElementById('statTotal').textContent=data.stats.total;
-            document.getElementById('statPdf').textContent=data.stats.pdf_to_word;
-            document.getElementById('statWord').textContent=data.stats.word_to_pdf;
-          } else {
-            loadStats();
-          }
+            const s=data.stats;
+            document.getElementById('statTotal').textContent=s.total||0;
+            document.getElementById('statPdf').textContent=s.pdf_to_word||0;
+            document.getElementById('statWord').textContent=s.word_to_pdf||0;
+            const today=s.today_count||0;
+            const limit=s.daily_limit||8;
+            const remaining=s.remaining||0;
+            document.getElementById('statToday').textContent=today;
+            document.getElementById('statLimit').textContent=limit;
+            document.getElementById('statRemaining').textContent=remaining;
+            document.getElementById('statBar').style.width=(today/limit*100)+'%';
+          } else { loadStats(); }
         result.className='result show success';
         resultIcon.textContent='✅';
         resultMsg.textContent='CHUYỂN ĐỔI THÀNH CÔNG!';
