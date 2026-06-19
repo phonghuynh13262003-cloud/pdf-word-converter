@@ -233,6 +233,14 @@ def download(filename):
     return send_file(path, as_attachment=True, download_name=filename)
 
 
+@app.route("/preview/<filename>")
+def preview(filename):
+    path = os.path.join(OUTPUT_FOLDER, filename)
+    if not os.path.exists(path):
+        return "File không còn tồn tại.", 404
+    return send_file(path, as_attachment=False, mimetype="application/pdf")
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
